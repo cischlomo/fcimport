@@ -7,14 +7,17 @@ my $sth=0;
 
 my $ua = LWP::UserAgent->new(requests_redirectable=>[]);
 
-#my $html_newsid=94831;
-#my $newsid=94831;
-#my $wayback_prefix="http://web.archive.org/web/20021203085515/";
-#get_comments($wayback_prefix,$newsid,$html_newsid);
+
+#my $wayback_prefix="http://web.archive.org/web/20000815053459/";
+#foreach my $newsid (@newsids) {
+# my $html_newsid=$newsid*213213;
+# print "http://forum.fuckedcompany.com/comments/index.cfm?newsID=" . $html_newsid . "\n";next;
+# get_comments($wayback_prefix,$newsid,$html_newsid);
+#}
 #exit;
 
 my @urls=qw#
-/web/20021025140230/http://comments.fuckedcompany.com/fc/phparchives/index.php?startrow=21
+/web/20020223145850/http://forum.fuckedcompany.com/fc/phparchives/index.php?startrow=11
 #;
 
 foreach my $url (@urls) {
