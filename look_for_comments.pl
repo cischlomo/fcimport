@@ -9,7 +9,7 @@ my $ua = LWP::UserAgent->new(requests_redirectable=>[]);
 
 get_archives:
 my $year=2002;
-my $row=1;
+my $row=411;
 my $url = "http://web.archive.org/web/" . $year . 
 "0000000000*/http://www.fuckedcompany.com/archives/index.cfm?startrow=$row";
 #"0000000000*/http://comments.fuckedcompany.com/fc/phparchives/index.php?startrow=$row";
@@ -143,13 +143,13 @@ sub get_comments {
  while ($j<$num_pages) {
   $j++;
   my @commenturls=(
+   "http://www.fuckedcompany.com/comments/html/$html_newsid-$j.html",
+   "http://www.fuckedcompany.com/comments/index.cfm?newsID=$html_newsid".($j>1 ? "&page=$j" : ""),
    "http://comments.fuckedcompany.com/phpcomments/index.php?newsid=$html_newsid&sid=1&page=$j&parentid=0&crapfilter=1",
    "http://comments.fuckedcompany.com/phpcomments/index.php?newsid=$html_newsid&page=$j&parentid=0&crapfilter=1",  
    "http://comments.fuckedcompany.com/phpcomments/index.php?newsid=$html_newsid&page=$j&parentid=0&crapfilter=0",
    "http://forum.fuckedcompany.com/phpcomments/index.php?newsid=$html_newsid&page=$j&parentid=0&crapfilter=1",
-   "http://forum.fuckedcompany.com/phpcomments/index.php?newsid=$html_newsid&page=$j&parentid=0&crapfilter=0",
-   "http://www.fuckedcompany.com/comments/html/$html_newsid-$j.html",
-   "http://www.fuckedcompany.com/comments/index.cfm?newsID=$html_newsid".($j>1 ? "&page=$j" : "")
+   "http://forum.fuckedcompany.com/phpcomments/index.php?newsid=$html_newsid&page=$j&parentid=0&crapfilter=0"
    );
   foreach my $commenturl (@commenturls) {
    $commenturl = $wayback_prefix . $commenturl;
@@ -167,7 +167,7 @@ sub get_comments {
     #might still be a redir
     my $content=$ua->get($commenturl)->content;
     if ($content =~ /Redirecting to\.\.\./s) {
-     print "got a fake 302 with $commenturl\n";
+     print "got a javascript redir with $commenturl\n";
      my ($redir)=$content=~/document.location.href[^"]*"([^"]*)/;
 	 $redir=~s/\\//g;
 	 next unless $redir;
@@ -177,7 +177,7 @@ sub get_comments {
 	}
     print "found comments for $commenturl with code $code\n";
 	#save it off
-	save($content, $newsid ."_" . $j .".html");
+	save($content, $newsid ."_" . $j .".html",$commenturl);
     if ($num_pages == 1 ) {
 	 $found_comments=1;
      #$sth=$dbh->prepare("delete from tblcomments where newsid=$newsid ");
@@ -282,9 +282,12 @@ sub get_comments {
 }
 
 sub save {
- my($content, $filename)=@_;
+ my($content, $filename, $commenturl)=@_;
  return unless $filename;
  open FH, ">" , $filename;
+ if (defined $commenturl) {
+  print FH "/*SAVED FROM $commenturl  */\n";
+ }
  print FH $content;
  close FH;
 }
