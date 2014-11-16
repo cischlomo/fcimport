@@ -7,33 +7,55 @@ my $sth=0;
 
 my $ua = LWP::UserAgent->new(requests_redirectable=>[]);
 
+get_archives:
+my $year=2002;
+my $row=1;
+my $url = "http://web.archive.org/web/" . $year . 
+"0000000000*/http://www.fuckedcompany.com/archives/index.cfm?startrow=$row";
+#"0000000000*/http://comments.fuckedcompany.com/fc/phparchives/index.php?startrow=$row";
+my $req = HTTP::Request->new(GET=>$url);
+my $res = $ua->request($req);
+my $content=  $res->content;
+$res->code==200 or die "$url got " . $res->code;
+my @urls=$content=~/<li><a href="([^"]*)/sg;
+#print join "\n",@urls;
+my %days=();
+foreach (@urls) {
+ my ($mmdd,$hhmmss)=m#/web/[0-9]{4}([0-9]{4})([0-9]{6})#;
+ $days{$mmdd}{$hhmmss}=$_;
+}
+my @urls=();
 
-#my $wayback_prefix="http://web.archive.org/web/20000815053459/";
-#foreach my $newsid (@newsids) {
-# my $html_newsid=$newsid*213213;
-# print "http://forum.fuckedcompany.com/comments/index.cfm?newsID=" . $html_newsid . "\n";next;
-# get_comments($wayback_prefix,$newsid,$html_newsid);
-#}
+foreach (sort keys %days) {
+ my @dates = sort keys $days{$_};
+ push @urls, $days{$_}{$dates[scalar @dates-1]};
+ #exit;
+}
+#print join "\n",@urls;
 #exit;
 
-my @urls=qw#
-/web/20020223145850/http://forum.fuckedcompany.com/fc/phparchives/index.php?startrow=11
-#;
-
+get_by_page:
 foreach my $url (@urls) {
- $url="http://web.archive.org".$url;
+if ( !($url=~m#^http://web.archive.org#) ){
+  $url="http://web.archive.org".$url;
+ }
  print "---------- getting $url\n";
- #next;
- #my $url="http://web.archive.org/web/20011119184330/http://www.fuckedcompany.com/";
+ 
  my ($wayback_prefix)=$url=~/(^.*?\/)http/;
  my $req = HTTP::Request->new(GET=>$url);
  my $res = $ua->request($req);
  my $content=  $res->content;
- $res->code==200 or die "$url got " . $res->code;
+ $res->code==200 or next; #die "$url got " . $res->code;
  my @fucks=();
- if ($url=~/company\.com\/$/) {
+ my ($date_archived)=$wayback_prefix=~m#/web/([0-9]+)#;
+ if ($url=~/company\.com\/$/) { #front page
+  #save off
+  save($content,"fp_".$date_archived.".html");
+  #exit;
   @fucks=$content=~/bullet[12].gif".*?>&nbsp;.*?<font size=1>[0-9]+ comments/isg;
- } else {
+ } else { #archives
+  my ($page)=$url=~m#startrow=([0-9]+)#;
+  save($content,"archive_".$date_archived."_".$page.".html");
   @fucks=$content=~/(class="?bigheadline.*?br clear)/isg;
  }
  #print scalar @fucks; exit;
@@ -151,10 +173,11 @@ sub get_comments {
 	 next unless $redir;
   	 $commenturl="http://web.archive.org".$redir;
  	 print "trying $commenturl\n";
-	 #exit;
  	 goto beginloop;
 	}
     print "found comments for $commenturl with code $code\n";
+	#save it off
+	save($content, $newsid ."_" . $j .".html");
     if ($num_pages == 1 ) {
 	 $found_comments=1;
      #$sth=$dbh->prepare("delete from tblcomments where newsid=$newsid ");
@@ -194,6 +217,32 @@ sub get_comments {
 	  next;
 	 }
      print "consistency check passed\n";
+	 if ($j==1) { #still on first page
+	  #is news item in yet?
+	  my $sql="select count(0) from tblnews where newsid=$newsid";
+      my $rows= $dbh->selectrow_array($sql);# or die "xxxx $sql";
+      if ($rows==0) {
+	   #add the newsitem
+	   my ($headline,$company, $article,$when,$points,$html_newsid,$severity)=0;
+	   ($company,$headline,$article)=$content=~m#class="?regular"? bgcolor="?[0-9A-F]*"?><b>(.*?) - </b>\s*(.*?)\s+:\s+(.*?)</td>#s;
+       $headline=~s/'/''/sg;
+       $article=~s#/web/[0-9]+/##g; #trims wayback urls from articles
+       $article=~s/'/''/sg;
+       $company=~s/\s*<a.*//si;
+       $company=~s/'/''/sg;
+       my @time = gmtime (str2time ($dates[0]));
+       $sql="insert into tblnews (newsid, headline, description, description2, published, company, severity, points, deleted, approved) values ".
+        "($newsid ,'$headline','$article', '$article',";
+	   $sql.=sprintf ("{ts'%04d-%02d-%02d %02d:%02d:%02d'},",$time[5]+1900,$time[4]+1,$time[3],$time[2],$time[1],$time[0]);
+	   $sql.="'$company', 100, 100, 0, 1)";
+       #print $sql , "\n";exit;
+       $sth=$dbh->prepare($sql);
+       $sth->execute or  die ($sql);
+       $sql="insert into tblhtml (newsid) values ($newsid )";
+       $sth=$dbh->prepare($sql);
+       $sth->execute;	  
+	  }
+	 }
 	 #print join "\n",@subjects;exit;
      my $i=0;
      foreach (@messages) {
@@ -230,4 +279,12 @@ sub get_comments {
   }
  }
  return $found_comments;
+}
+
+sub save {
+ my($content, $filename)=@_;
+ return unless $filename;
+ open FH, ">" , $filename;
+ print FH $content;
+ close FH;
 }
