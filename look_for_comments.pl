@@ -8,129 +8,144 @@ my $sth=0;
 my $ua = LWP::UserAgent->new(requests_redirectable=>[]);
 
 get_archives:
+#archives goes up to startrow 911
 my $year=2002;
-my $row=411;
-my $url = "http://web.archive.org/web/" . $year . 
-"0000000000*/http://www.fuckedcompany.com/archives/index.cfm?startrow=$row";
-#"0000000000*/http://comments.fuckedcompany.com/fc/phparchives/index.php?startrow=$row";
-my $req = HTTP::Request->new(GET=>$url);
-my $res = $ua->request($req);
-my $content=  $res->content;
-$res->code==200 or die "$url got " . $res->code;
-my @urls=$content=~/<li><a href="([^"]*)/sg;
-#print join "\n",@urls;
-my %days=();
-foreach (@urls) {
- my ($mmdd,$hhmmss)=m#/web/[0-9]{4}([0-9]{4})([0-9]{6})#;
- $days{$mmdd}{$hhmmss}=$_;
-}
-my @urls=();
-
-foreach (sort keys %days) {
- my @dates = sort keys $days{$_};
- push @urls, $days{$_}{$dates[scalar @dates-1]};
- #exit;
-}
-#print join "\n",@urls;
-#exit;
-
-get_by_page:
-foreach my $url (@urls) {
-if ( !($url=~m#^http://web.archive.org#) ){
-  $url="http://web.archive.org".$url;
- }
- print "---------- getting $url\n";
- 
- my ($wayback_prefix)=$url=~/(^.*?\/)http/;
+my $row=1;
+my $done=0;
+while (1) {
+ my $url="http://web.archive.org/web/20000615000000*/http://www.fuckedcompany.com/archives/index.cfm?startrow=$row";
+ #http://web.archive.org/web/" . $year . "0000000000*/http://www.fuckedcompany.com/
+ #my $url = "http://web.archive.org/web/20010515000000*/http://www.fuckedcompany.com/";
+ #"http://web.archive.org/web/20000615000000*/http://www.fuckedcompany.com";
+ #"0000000000*/http://www.fuckedcompany.com/archives/index.cfm?startrow=$row";
+ #"0000000000*/http://comments.fuckedcompany.com/fc/phparchives/index.php?startrow=$row";
  my $req = HTTP::Request->new(GET=>$url);
  my $res = $ua->request($req);
  my $content=  $res->content;
- $res->code==200 or next; #die "$url got " . $res->code;
- my @fucks=();
- my ($date_archived)=$wayback_prefix=~m#/web/([0-9]+)#;
- if ($url=~/company\.com\/$/) { #front page
-  #save off
-  save($content,"fp_".$date_archived.".html");
-  #exit;
-  @fucks=$content=~/bullet[12].gif".*?>&nbsp;.*?<font size=1>[0-9]+ comments/isg;
- } else { #archives
-  my ($page)=$url=~m#startrow=([0-9]+)#;
-  save($content,"archive_".$date_archived."_".$page.".html");
-  @fucks=$content=~/(class="?bigheadline.*?br clear)/isg;
+ $res->code==200 or die "$url got " . $res->code;
+ my @urls=$content=~/<li><a href="([^"]*)/sg;
+ #print join "\n",@urls;
+ my %days=();
+ foreach (@urls) {
+  my ($mmdd,$hhmmss)=m#/web/[0-9]{4}([0-9]{4})([0-9]{6})#;
+  $days{$mmdd}{$hhmmss}=$_;
  }
- #print scalar @fucks; exit;
- foreach   (@fucks) {
- my ($headline,$company, $article,$when,$points,$html_newsid,$severity)=0;
- if ($url=~/company\.com\/$/) {
- ($headline,$article,$when,$company,$severity,$points,$html_newsid)=
-  m#>\s*&nbsp;(.*?)</span>.*?article"?>(.*?)<br>\s*When: ([/0-9]+).*?Company: (.*?)<br>\s*[A-Z][a-z]+: ([0-9]+).*?Points: ([0-9]+).*?[^0-9]([0-9]{5,11})[^0-9]#s;
- } elsif ($url=~/php/) {
-  ($headline,$article,$when,$company,$points,$html_newsid)=
-   /bigheadline">(.*?)<\/span.*?\/b><br>\s*(.*?)<br>\s*When:\s*([\/a-zA-Z0-9: ]+?[AP]M).*?Company:\s*(.*?)<br.*?Points: ([0-9]+).*?newsid=([0-9]+)/s;
- } else {
-   ($headline,$company, $article,$when,$points,$html_newsid)=
-    /bigheadline">(.*?)<\/span.*?<b>(.*?)<\/b><br>\s*(.*?)<br>\s*When:\s*([\/0-9]+).*?Points:\s*([0-9]+).*?.*?<a href=.*?[^0-9]([0-9]{5,11})[^0-9]/s;
-  }
-  #print $headline , "\n";
-  #print $article , "\n";
-  #print $when , "\n";
-  #print $company , "\n";
-  #next;
-  #print $points , "\n";
-  #print $html_newsid , "\nxxxxxxxxxxxxx\n";
-  #exit;
-  next if $html_newsid==0;
-  $headline=~s/'/''/sg;
-  $article=~s#/web/[0-9]+/##g; #trims wayback urls from articles
-  $article=~s/'/''/sg;
-  $company=~s/\s*<a.*//si;
-  $company=~s/'/''/sg;
-  my $newsid=0;
-  my $divisor=213213;
-  if ( ($html_newsid % $divisor)==0 ) {
-   $newsid=$html_newsid/$divisor
-  } else {
-   $newsid=$html_newsid;
-  }
-  
-  
-  #checking if already entered
-  my $sql="select count(0) from tblnews where newsid=$newsid ";
-  my $rows= $dbh->selectrow_array($sql);# or die "xxxx $sql";
-  if ($rows>0) {
-   print "$company already entered, checking if comments were entered\n";
-   goto enter_comments;
-  } else {
-   print "$company not yet entered\n";
-  }
-  $sql="insert into tblnews (newsid, headline, description, description2, published, company, severity, points, deleted, approved) values ".
-  "($newsid ,'$headline','$article', '$article',  convert( date, '$when' ), '$company', 100, $points, 0, 1)";
-  #print $sql , "\n";next;
-  $sth=$dbh->prepare($sql);
-  $sth->execute;# or  die ($sql);
-  $sql="insert into tblhtml (newsid) values ($newsid )";
-  $sth=$dbh->prepare($sql);
-  $sth->execute;
+ my @urls=();
  
-  enter_comments:
-  #check if comments already entered
-  $sql="select count(0) from tblcomments where newsid=$newsid";
-  my $rows= $dbh->selectrow_array($sql);# or die "xxxx $sql";
-  if ($rows>0) {
-   print "comments for $newsid already entered\n";
-   next;
+ foreach (sort keys %days) {
+  my @dates = sort keys $days{$_};
+  push @urls, $days{$_}{$dates[scalar @dates-1]};
+  #exit;
+ }
+ get_by_page(\@urls);
+ #$done=1;
+ $row+=10;
+}
+
+sub get_by_page {
+ my (@urls)= @{$_[0]};
+ #print join "\n" , @urls;
+ #exit;
+ foreach my $url (@urls) {
+ if ( !($url=~m#^http://web.archive.org#) ){
+   $url="http://web.archive.org".$url;
+  }
+  print "---------- getting $url\n";
+  
+  my ($wayback_prefix)=$url=~/(^.*?\/)http/;
+  my $req = HTTP::Request->new(GET=>$url);
+  my $res = $ua->request($req);
+  my $content=  $res->content;
+  $res->code==200 or die "$url got " . $res->code;
+  my @fucks=();
+  my ($date_archived)=$wayback_prefix=~m#/web/([0-9]+)#;
+  if ($url=~/company\.com\/$/) { #front page
+   #save off
+   save($content,"fp_".$date_archived.".html");
+   #exit;
+   #@fucks=$content=~/bullet[12].gif".*?>&nbsp;.*?<font size=1>[0-9]+ comments/isg;
+   #@fucks=$content=~/bullet[12]?.gif".*?>&nbsp;.*?<font size=1>\s*[Cc]omment/isg;
+   @fucks=$content=~/bullet[12]?.gif".*?>&nbsp;.*?<font size=1>\s*[0-9]*\s*[Cc]omment/isg;
+   } else { #archives
+   my ($page)=$url=~m#startrow=([0-9]+)#;
+   save($content,"archive_".$date_archived."_".$page.".html");
+   @fucks=$content=~/(class="?bigheadline.*?br clear)/isg;
+  }
+  #print scalar @fucks; exit;
+  foreach   (@fucks) {
+  my ($headline,$company, $article,$when,$points,$html_newsid,$severity)=0;
+  if ($url=~/company\.com\/$/) {
+  ($headline,$article,$when,$company,$severity,$points,$html_newsid)=
+   m#>\s*&nbsp;(.*?)</span>.*?article"?>(.*?)<br>\s*When: ([/0-9]+).*?Company: (.*?)<br>\s*[A-Z][a-z]+: ([0-9]+).*?Points: ([0-9]+).*?[^0-9]([0-9]{5,11})[^0-9]#s;
+  } elsif ($url=~/php/) {
+   ($headline,$article,$when,$company,$points,$html_newsid)=
+    /bigheadline">(.*?)<\/span.*?\/b><br>\s*(.*?)<br>\s*When:\s*([\/a-zA-Z0-9: ]+?[AP]M).*?Company:\s*(.*?)<br.*?Points: ([0-9]+).*?newsid=([0-9]+)/s;
   } else {
-   print "comments for $newsid not yet entered\n";
-   my $found_comments=0;
-   if (!get_comments($wayback_prefix,$newsid,$html_newsid)) {
-    my $sql="insert into tblcomments (commentid,newsid,username,subject,comment,posted) values ".
-    "(0, $newsid , 'bot', 'not found','$newsid not in wayback',convert( date, '$when' ) )";
-    $sth=$dbh->prepare($sql);
-    $sth->execute or die $sql;
+    ($headline,$company, $article,$when,$points,$html_newsid)=
+     /bigheadline">(.*?)<\/span.*?<b>(.*?)<\/b><br>\s*(.*?)<br>\s*When:\s*([\/0-9]+).*?Points:\s*([0-9]+).*?.*?<a href=.*?[^0-9]([0-9]{5,11})[^0-9]/s;
+   }
+   #print $headline , "\n";
+   #print $article , "\n";
+   #print $when , "\n";
+   #print $company , "\n";
+   #next;
+   #print $points , "\n";
+   #print $html_newsid , "\nxxxxxxxxxxxxx\n";
+   #exit;
+   #die "htmlnewsid is 0" 
+   next if $html_newsid==0;
+   $headline=~s/'/''/sg;
+   $article=~s#/web/[0-9]+/##g; #trims wayback urls from articles
+   $article=~s/'/''/sg;
+   $company=~s/\s*<a.*//si;
+   $company=~s/'/''/sg;
+   my $newsid=0;
+   my $divisor=213213;
+   if ( ($html_newsid % $divisor)==0 ) {
+    $newsid=$html_newsid/$divisor
+   } else {
+    $newsid=$html_newsid;
+   }
+   
+   
+   #checking if already entered
+   my $sql="select count(0) from tblnews where newsid=$newsid ";
+   my $rows= $dbh->selectrow_array($sql);# or die "xxxx $sql";
+   if ($rows>0) {
+    print "$company already entered, checking if comments were entered\n";
+    goto enter_comments;
+   } else {
+    print "$company not yet entered\n";
+   }
+   $sql="insert into tblnews (newsid, headline, description, description2, published, company, severity, points, deleted, approved) values ".
+   "($newsid ,'$headline','$article', '$article',  convert( date, '$when' ), '$company', 100, $points, 0, 1)";
+   #print $sql , "\n";next;
+   $sth=$dbh->prepare($sql);
+   $sth->execute;# or  die ($sql);
+   $sql="insert into tblhtml (newsid) values ($newsid )";
+   $sth=$dbh->prepare($sql);
+   $sth->execute;
+  
+   enter_comments:
+   #check if comments already entered
+   $sql="select count(0) from tblcomments where newsid=$newsid";
+   my $rows= $dbh->selectrow_array($sql);# or die "xxxx $sql";
+   if ($rows>0) {
+    print "comments for $newsid already entered\n";
+    next;
+   } else {
+    print "comments for $newsid not yet entered\n";
+    my $found_comments=0;
+    if (!get_comments($wayback_prefix,$newsid,$html_newsid)) {
+     my $sql="insert into tblcomments (commentid,newsid,username,subject,comment,posted) values ".
+     "(0, $newsid , 'bot', 'not found','$newsid not in wayback',convert( date, '$when' ) )";
+     $sth=$dbh->prepare($sql);
+     $sth->execute or die $sql;
+    }
    }
   }
+  #exit;
  }
- #exit;
 }
 
 
@@ -270,6 +285,7 @@ sub get_comments {
      print "subjects: " , scalar @subjects , "\n";
      print "dates: " , scalar @dates , "\n";
      print "authors: " , scalar @authors , "\n";
+	 last;
 	 exit;
     }
     last; #found a good url, no need to try others
