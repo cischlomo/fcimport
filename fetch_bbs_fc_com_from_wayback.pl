@@ -14,10 +14,10 @@ foreach (@tids){
 #print scalar %unique_tids;exit;
 #print join ("\n",  
 @tids = sort { $a <=> $b } keys %unique_tids;
-
+my $start_after=478516
 my $ua = LWP::UserAgent->new(requests_redirectable=>[],keep_alive => 10);
 foreach $tid (@tids) {
- next unless $tid==101337; #was using head (197182), location header works better with get
+ next unless $tid>$start_after; #location header works better with get than head
  $commenturl=$prefix . $tid;
  #print $commenturl;exit;
  begin_topic_loop:
@@ -94,7 +94,7 @@ sub save {
  return unless $filename;
  $convdir = "c:/fcscripts/bbstopics";
  if (-e $convdir . "/" . $filename ) {
-  die $convdir . "/" . $filename . "exists!";
+  die $convdir . "/" . $filename . " exists!";
  }
  open FH, ">" , $convdir . "/" . $filename;
  if (defined $commenturl) {
