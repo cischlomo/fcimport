@@ -1,3 +1,4 @@
+use File::Find;
 use HTML::Entities;
 use LWP;
 undef $/;
@@ -21,9 +22,10 @@ find (sub {
  my ($topicnum)=/topic_([0-9]+)/;
  $topicnums{$topicnum}=1;
 }, qw/bbstopics/);
+my @topicnums=reverse sort { $a <=> $b } (keys %topicnums);
 # $topicnums[0] contains highest #
 my $start_after=$topicnums[0]; #or set explicitly, e.g. 478516;
-die "no valid start number" unless $start_after>0;
+die "start after not valid: $start_after" unless $start_after>0;
 my $ua = LWP::UserAgent->new(requests_redirectable=>[],keep_alive => 10);
 foreach $tid (@tids) {
  next unless $tid>$start_after;
