@@ -1,5 +1,4 @@
 use File::Find;
-use HTML::Entities;
 use LWP;
 undef $/;
 $prefix="http://web.archive.org/web/20051006225723/http://bbs.fuckedcompany.com/index.cgi?okay=get_topic&topic_id=";
