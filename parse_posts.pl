@@ -2,15 +2,19 @@ use Date::Parse;
 use HTML::Entities;
 use DBI;
 
-$host="xbmc";
-$user="ff";
-$password="ff";
-$debug=0;
-$dsn="dbi:mysql:host=$host;database=campidiot"; 
+use warnings; use strict;
 
+my $host="xbmc";
+my $user="ff";
+my $password="ff";
+my $debug=0;
+my $dsn="dbi:mysql:host=$host;database=campidiot"; 
+my $sql="";
+my $filename="";
+my $dbh=0;
 
 sub handle_error {
- $error=shift;
+ my $error=shift;
  if ($error=~/syntax/) {
   die $error .", " . $sql . " " . $File::Find::dir . "/" . $filename ;
  }
@@ -18,12 +22,12 @@ sub handle_error {
 
 sub sqlstuff {
  return if $debug;
- my ($sql)=@_;
+ ($sql)=@_;
  if  ($debug) {
   print "$sql\n";
   return;
  }
- $sth=$dbh->prepare($sql);
+ my $sth=$dbh->prepare($sql);
  $sth->execute ;
 }
 
@@ -36,32 +40,39 @@ sub topic_exists {
 
 undef $/;
 
-$arg=$ARGV[0];
+my $arg=$ARGV[0];
 my $only_do_topic=0;
-if ($arg=~/[a-zA-Z]/) {
- #die "starting";
- $debug=1;
- open FH, "<" , $arg or die "couldn't open file";
- $content=<FH>;
- close FH;
- parse_posts($content);
- exit;
-} elsif ($arg=~/^[0-9]+$/) {
- $only_do_topic=$arg;
+my $start_at_topic=0;
+if (@ARGV) {
+ if ($arg=~/[a-zA-Z]/) {
+  #die "starting";
+  $debug=1;
+  open FH, "<" , $arg or die "couldn't open file";
+  my $content=<FH>;
+  close FH;
+  parse_posts($content);
+  exit;
+ } elsif ($arg=~/^[0-9]+$/) {
+  #$only_do_topic=$arg;
+  #$start_at_topic=$arg;
+ }
 }
+
 $dbh=DBI->connect($dsn,$user,$password, 
  {PrintError  => 0, HandleError => \&handle_error}
 );
 
 use File::Find;
-find (\&wanted,qw/bbstopics bbstopics1 bbstopics2 bbspages bbspages1 bbspages2/);
+find (\&wanted,qw/bbstopics/);
 
 sub wanted {
- next unless /topic_/;
- next unless $only_do_topic==0 || /$only_do_topic/;
+ return unless /topic_/;
+ #next unless $start_at_topic==0 || /$only_do_topic/;
+ my ($topicnum)=/topic_([0-9]+)/;
+ return unless $topicnum>401175;
  $filename=$_;
  open FH,"<", $filename ;
- $content=<FH>;
+ my $content=<FH>;
  close FH;
  parse_posts($content);
 }
@@ -75,29 +86,27 @@ sub dbesc{
 
 sub parse_posts {
 #die "oops";
- ($content)=@_;
- ($tid,$topic)=$content=~m#topic_id=([0-9]+).*?<title>(.*?)</title>#s;
- 
+ my ($content)=@_;
+ my ($tid,$topic)=$content=~m#topic_id=([0-9]+).*?<title>(.*?)</title>#s;
  return if !$topic;
+ return if topic_exists($tid);
  $topic=decode_entities($topic);
- if (!topic_exists($tid)){
-  $sql="insert into ci_topics (id,subject) values ($tid, '" . dbesc($topic) . "')";
-  sqlstuff($sql);
- }
+ $sql="insert into ci_topics (id,subject) values ($tid, '" . dbesc($topic) . "')";
+ sqlstuff($sql);
 
  $content=~s/.*?head -->//s;
  $content=~s#</table>\s*<br>\s*This topic.*##s;
- $content=~s#<A NAME=[0-9]*>(.*?)</A>#\1#sg;
- @posts=$content=~m#<td valign=top><b>.*?</b>.*?Delete.*?</table>#sg;
+ $content=~s#<A NAME=[0-9]*>(.*?)</A>#$1#sg;
+ my @posts=$content=~m#<td valign=top><b>.*?</b>.*?Delete.*?</table>#sg;
  
  
- $numposts=0;
+ my $numposts=0;
  foreach $topic ( @posts ) {
   $numposts++;
-  ($author,$title,$posted,$message) = $topic =~ 
+  my ($author,$title,$posted,$message) = $topic =~ 
    m#<td valign=top><b>(.*?)</b>.*?<font size=1>(.*?)</font>.*?<font size=1>(.*?)</font>.*?</table>(.*?)<br>\s*<table#s;
  
-  if (($userid,$author1)=$author=~m#user_id=([0-9]+)">(.*?)</a#s) { #s also removes embedded crs
+  if (my($userid,$author1)=$author=~m#user_id=([0-9]+)">(.*?)</a#s) { #s also removes embedded crs
    #print "u: $userid\n";
    $author=$author1;
   }
@@ -128,26 +137,26 @@ sub debbsify {
  if ($$content=~s#<A[^>]+>(?=<A)##sg) {
   $$content=~s#</A>\s*</A>#</A>#sg;
  }
- $recurslimit=10; 
+ my $recurslimit=10; 
  while ($$content=~m#TARGET=_blank# && $recurslimit-- > 0) {
   if ($$content=~m#<A.*?HREF="([^"]*)"\s*TARGET=_blank>(.*?)</A>#s) {
    if ($1 eq $2) {
-    $$content=~s#<A.*?HREF="([^"]*)"\s*TARGET=_blank>(.*?)</A>#\1#s;
+    $$content=~s#<A.*?HREF="([^"]*)"\s*TARGET=_blank>(.*?)</A>#$1#s;
    } else {
-    $$content=~s#<A.*?HREF="([^"]*)"\s*TARGET=_blank>(.*?)</A>#\[url=\1\]\2\[/url\]#s;
+    $$content=~s#<A.*?HREF="([^"]*)"\s*TARGET=_blank>(.*?)</A>#\[url=$1\]$2\[/url\]#s;
    }
   }
  }
  $recurslimit=10;
  while ($$content=~m#<BLOCKQUOTE><font size="1">quote:</font><HR>Originally posted by\s*(.*?)<[Bb]r?>(.*?)</?[Bb]r?><HR></BLOCKQUOTE># && $recurslimit-- > 0) {
-  $$content=~s#<BLOCKQUOTE><font size="1">quote:</font><HR>Originally posted by\s*(.*?)<[Bb]?.*?><?B?R?>?(.*?)</?[Bb]?r?><HR></BLOCKQUOTE>#[quote="\1"]\2\[/quote]#is;
+  $$content=~s#<BLOCKQUOTE><font size="1">quote:</font><HR>Originally posted by\s*(.*?)<[Bb]?.*?><?B?R?>?(.*?)</?[Bb]?r?><HR></BLOCKQUOTE>#[quote="$1"]$2\[/quote]#is;
  }
- $$content=~s#<BLOCKQUOTE><font size="1">quote:</font><HR>Originally posted by\s*(.*?)<[Bb]?.*?><?B?R?>?#[quote="\1"]\2\[/quote]#is;
- $$content=~s#<B>(.*?)</B>#\[b\]\1\[/b\]#sg;
- $$content=~s#<I>(.*?)</I>#\[i\]\1\[/i\]#sg;
- $$content=~s#<IMG SRC.*?TITLE="([^"]*)">#:\1:#sg;
- $$content=~s#<IMG SRC.*?ALT="([^"]*)">#:\1:#sg;
- $$content=~s#<IMG SRC.*?icons/([^\.]*).gif">#:\1:#sg;
+ $$content=~s#<BLOCKQUOTE><font size="1">quote:</font><HR>Originally posted by\s*(.*?)<[Bb]?.*?><?B?R?>?#[quote="$1"]\[/quote]#is;
+ $$content=~s#<B>(.*?)</B>#\[b\]$1\[/b\]#sg;
+ $$content=~s#<I>(.*?)</I>#\[i\]$1\[/i\]#sg;
+ $$content=~s#<IMG SRC.*?TITLE="([^"]*)">#:$1:#sg;
+ $$content=~s#<IMG SRC.*?ALT="([^"]*)">#:$1:#sg;
+ $$content=~s#<IMG SRC.*?icons/([^\.]*).gif">#:$1:#sg;
  $$content=~s#To see the rest of this post.*?</a>.*?missing.*?[0-9]+\s+##s;
  $$content=~s/<br>/\r\n/sg;
 }
