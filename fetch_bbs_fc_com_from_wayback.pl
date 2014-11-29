@@ -4,6 +4,7 @@ undef $/;
 $prefix="http://web.archive.org/web/20051006225723/http://bbs.fuckedcompany.com/index.cgi?okay=get_topic&topic_id=";
 open FH, "<bbs_topics.html"; # file pulled from following url that shows all the bbs.fc.com topics in wayback
                              # http://web.archive.org/web/*/http://bbs.fuckedcompany.com/index.cgi?okay=get_topic*
+							 # there are 2,475,665 bbs.fc.com topics in wayback
 $content=<FH>;
 close FH;
 %unique_tids=();
@@ -11,20 +12,28 @@ close FH;
 foreach (@tids){
  $unique_tids{$_}=1;
 }
-#print scalar %unique_tids;exit;
-#print join ("\n",  
 @tids = sort { $a <=> $b } keys %unique_tids;
-my $start_after=478516
+
+#start where left off last time?
+my %topicnums=();
+find (sub {
+ return unless /^topic_/;
+ my ($topicnum)=/topic_([0-9]+)/;
+ $topicnums{$topicnum}=1;
+}, qw/bbstopics/);
+# $topicnums[0] contains highest #
+my $start_after=$topicnums[0]; #or set explicitly, e.g. 478516;
+die "no valid start number" unless $start_after>0;
 my $ua = LWP::UserAgent->new(requests_redirectable=>[],keep_alive => 10);
 foreach $tid (@tids) {
- next unless $tid>$start_after; #location header works better with get than head
+ next unless $tid>$start_after;
  $commenturl=$prefix . $tid;
  #print $commenturl;exit;
  begin_topic_loop:
  my $resp=$ua->get($commenturl);
  my $code=$resp->code;
  if ($code==302) {
-  my $redir = $resp->header("Location");
+  my $redir = $resp->header("Location"); #FYI Location header works better with GET than HEAD
   print "got a 302 from $commenturl to $redir\n";
   if (!$redir) {die $resp->as_string;}
   next unless $redir;
