@@ -27,7 +27,15 @@ my @topicnums=reverse sort { $a <=> $b } (keys %topicnums);
 my $start_after=$topicnums[0]; #or set explicitly, e.g. 478516;
 die "start after not valid: $start_after" unless $start_after>0;
 my $ua = LWP::UserAgent->new(requests_redirectable=>[],keep_alive => 10);
+
+my $done=0;
+$SIG{'INT'} = sub {
+ print "Exiting when there's a good stopping point...\n";
+ $done=1;
+};
+
 foreach $tid (@tids) {
+ last if $done;
  next unless $tid>$start_after;
  $commenturl=$prefix . $tid;
  #print $commenturl;exit;
@@ -98,6 +106,7 @@ foreach $tid (@tids) {
   }
  }
 }
+
 
 
 sub save {
