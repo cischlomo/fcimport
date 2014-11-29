@@ -69,7 +69,7 @@ sub wanted {
  return unless /topic_/;
  #next unless $start_at_topic==0 || /$only_do_topic/;
  my ($topicnum)=/topic_([0-9]+)/;
- return unless $topicnum>401175;
+ return unless $topicnum>1702081; #401175
  $filename=$_;
  open FH,"<", $filename ;
  my $content=<FH>;
@@ -135,23 +135,23 @@ sub debbsify {
  $$content=decode_entities($$content);
  $$content=~s#/web/[0-9]+/##sg; #trims wayback urls
  if ($$content=~s#<A[^>]+>(?=<A)##sg) {
-  $$content=~s#</A>\s*</A>#</A>#sg;
+  $$content=~s#</A>\s*</A>#</A>#isg;
  }
  my $recurslimit=10; 
  while ($$content=~m#TARGET=_blank# && $recurslimit-- > 0) {
-  if ($$content=~m#<A.*?HREF="([^"]*)"\s*TARGET=_blank>(.*?)</A>#s) {
+  if ($$content=~m#<A.*?HREF="([^"]*)"\s*TARGET=_blank>(.*?)</A>#is) {
    if ($1 eq $2) {
-    $$content=~s#<A.*?HREF="([^"]*)"\s*TARGET=_blank>(.*?)</A>#$1#s;
+    $$content=~s#<A.*?HREF="([^"]*)"\s*TARGET=_blank>(.*?)</A>#$1#is;
    } else {
-    $$content=~s#<A.*?HREF="([^"]*)"\s*TARGET=_blank>(.*?)</A>#\[url=$1\]$2\[/url\]#s;
+    $$content=~s#<A.*?HREF="([^"]*)"\s*TARGET=_blank>(.*?)</A>#\[url=$1\]$2\[/url\]#is;
    }
   }
  }
  $recurslimit=10;
- while ($$content=~m#<BLOCKQUOTE><font size="1">quote:</font><HR>Originally posted by\s*(.*?)<[Bb]r?>(.*?)</?[Bb]r?><HR></BLOCKQUOTE># && $recurslimit-- > 0) {
-  $$content=~s#<BLOCKQUOTE><font size="1">quote:</font><HR>Originally posted by\s*(.*?)<[Bb]?.*?><?B?R?>?(.*?)</?[Bb]?r?><HR></BLOCKQUOTE>#[quote="$1"]$2\[/quote]#is;
+ while ($$content=~m#<BLOCKQUOTE><font size="1">quote:</font><HR>Originally posted by\s*(.*?)<[b]r?>(.*?)(<br>)?<HR></BLOCKQUOTE>#is && $recurslimit-- > 0) {
+  $$content=~s#<BLOCKQUOTE><font size="1">quote:</font><HR>Originally posted by\s*(.*?)<[Bb]?.*?><?B?R?>?(.*?)(<br>)?<HR></BLOCKQUOTE>#[quote="$1"]$2\[/quote]#is;
  }
- $$content=~s#<BLOCKQUOTE><font size="1">quote:</font><HR>Originally posted by\s*(.*?)<[Bb]?.*?><?B?R?>?#[quote="$1"]\[/quote]#is;
+ $$content=~s#<BLOCKQUOTE><font size="1">quote:</font><HR>Originally posted by\s*(.*?)<[b]?.*?>(br)?#[quote="$1"]\[/quote]#is;
  $$content=~s#<B>(.*?)</B>#\[b\]$1\[/b\]#sg;
  $$content=~s#<I>(.*?)</I>#\[i\]$1\[/i\]#sg;
  $$content=~s#<IMG SRC.*?TITLE="([^"]*)">#:$1:#sg;
