@@ -53,8 +53,7 @@ if (@ARGV) {
   parse_posts($content);
   exit;
  } elsif ($arg=~/^[0-9]+$/) {
-  #$only_do_topic=$arg;
-  #$start_at_topic=$arg;
+  $only_do_topic=$arg;
  }
 }
 
@@ -62,14 +61,19 @@ $dbh=DBI->connect($dsn,$user,$password,
  {PrintError  => 0, HandleError => \&handle_error}
 );
 
+if ($only_do_topic) {
+ $sql="delete from ci_posts where topic_id=$arg";
+ sqlstuff($sql);
+}
+
 use File::Find;
 find (\&wanted,qw/bbstopics/);
 
 sub wanted {
  return unless /topic_/;
- #next unless $start_at_topic==0 || /$only_do_topic/;
+ return unless $only_do_topic==0 || /$only_do_topic/;
  my ($topicnum)=/topic_([0-9]+)/;
- return unless $topicnum>1702081; #401175
+ return unless $topicnum>0; #401175
  $filename=$_;
  open FH,"<", $filename ;
  my $content=<FH>;
@@ -89,11 +93,12 @@ sub parse_posts {
  my ($content)=@_;
  my ($tid,$topic)=$content=~m#topic_id=([0-9]+).*?<title>(.*?)</title>#s;
  return if !$topic;
- return if topic_exists($tid);
- $topic=decode_entities($topic);
- $sql="insert into ci_topics (id,subject) values ($tid, '" . dbesc($topic) . "')";
- sqlstuff($sql);
-
+ if(!topic_exists($tid)) {
+  #only insert a topic if it hasn't been done yet. Still need to insert posts otherwise
+  $topic=decode_entities($topic);
+  $sql="insert into ci_topics (id,subject) values ($tid, '" . dbesc($topic) . "')";
+  sqlstuff($sql);
+ }
  $content=~s/.*?head -->//s;
  $content=~s#</table>\s*<br>\s*This topic.*##s;
  $content=~s#<A NAME=[0-9]*>(.*?)</A>#$1#sg;
@@ -148,10 +153,19 @@ sub debbsify {
   }
  }
  $recurslimit=10;
- while ($$content=~m#<BLOCKQUOTE><font size="1">quote:</font><HR>Originally posted by\s*(.*?)<[b]r?>(.*?)(<br>)?<HR></BLOCKQUOTE>#is && $recurslimit-- > 0) {
-  $$content=~s#<BLOCKQUOTE><font size="1">quote:</font><HR>Originally posted by\s*(.*?)<[Bb]?.*?><?B?R?>?(.*?)(<br>)?<HR></BLOCKQUOTE>#[quote="$1"]$2\[/quote]#is;
+ while ($$content=~m#</?BLOCKQUOTE>#is && $recurslimit-- > 0) {
+  $$content=~s#<BLOCKQUOTE><font size="1">quote:</font><HR>Originally posted by\s*(.*?)<br>(.*?)<HR></BLOCKQUOTE>#[quote="$1"]$2\[/quote]#is
+    ||
+  $$content=~s#<BLOCKQUOTE><font size="1">quote:</font><HR>(.*?)<HR></BLOCKQUOTE>#[quote]$1\[/quote]#is
+    ||
+  $$content=~s#<BLOCKQUOTE><font size="1">quote:</font><HR>(.*)#[quote]$1\[/quote]#is
+    ||
+  $$content=~s#<HR></BLOCKQUOTE>##is
+  ;
+  #if ($recurslimit==3) {
+   #print "\nxxxxxxxxxxxxxxxxxx\n" , $$content , "\nxxxxxxxxxxxxxxxxxx\n";exit;
+  #}
  }
- $$content=~s#<BLOCKQUOTE><font size="1">quote:</font><HR>Originally posted by\s*(.*?)<[b]?.*?>(br)?#[quote="$1"]\[/quote]#is;
  $$content=~s#<B>(.*?)</B>#\[b\]$1\[/b\]#sg;
  $$content=~s#<I>(.*?)</I>#\[i\]$1\[/i\]#sg;
  $$content=~s#<IMG SRC.*?TITLE="([^"]*)">#:$1:#sg;
